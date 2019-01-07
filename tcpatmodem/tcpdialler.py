@@ -1,28 +1,46 @@
-import selectors
-import socket
+import asyncio
+import asyncio.transports
+
+
+from typing import Optional
+
+
+class TcpDiallerProtocol(asyncio.Protocol):
+    def __init__(self, dialler):
+        self.dialler = dialler
+        self.fsm = self.dialler.fsm
+        self.dialler.protocol = self
+
+    def connection_made(self, transport: asyncio.transports.BaseTransport):
+        self.transport = transport
+        self.fsm.connected('')
+
+    def data_received(self, data: bytes):
+        for c in data:
+            self.fsm.dte_output(chr(c))
+
+    def connection_lost(self, exc: Optional[Exception]):
+        self.fsm.disconnected()
+        self.dialler.protocol = None
 
 
 class TcpDialler:
-    def __init__(self, fsm, sel):
+    def __init__(self, loop, fsm):
+        self.loop = loop
         self.fsm = fsm
-        self.sel = sel
+        self.protocol = None
 
     def dial(self, number):
         (host, port) = number.split(':')
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setblocking(False)
-        self.sock.connect_ex((host, int(port)))
-        events = selectors.EVENT_READ | selectors.EVENT_WRITE
-        self.sel.register(self.sock, events, data=self.handle)
-        return (True, '', '')
+        c = self.loop.create_connection(
+            lambda: TcpDiallerProtocol(self), host, int(port))
+        self.loop.create_task(c)
+        return (None, '', '')
 
-    def handle(self, key, mask):
-        if mask & selectors.EVENT_READ:
-            self.fsm.dte_output(key.fileobj.recv(1024).decode('UTF-8'))
-        if mask & selectors.EVENT_WRITE:
-            if not self.fsm.connected:
-                self.fsm.connected = True
-                self.fsm.dte_response('CONNECTED')
+    def hangup(self):
+        if self.protocol and self.protocol.transport:
+            self.protocol.transport.abort()
 
     def write(self, s):
-        self.sock.sendall(s)
+        if self.protocol and self.protocol.transport:
+            self.protocol.transport.write(s.encode())

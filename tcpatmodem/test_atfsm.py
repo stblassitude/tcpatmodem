@@ -79,13 +79,13 @@ class ATFSMTest(TestCase):
 
     @patch('tcpatmodem.atfsm.time')
     def test_dte_input_escape(self, time):
-        self.dut.state = ATState.FWD
+        self.dut.state = ATState.CONNECTED
         time.return_value = 0.1
         self.dut.dte_input('a')
         self.assertEqual(self.dut.dte_recv_ts, 0.1, 'patch of time.time() didn\'t work')
-        self.assertEqual(self.dut.state, ATState.FWD)
+        self.assertEqual(self.dut.state, ATState.CONNECTED)
         self.dut.dte_input('+')
-        self.assertEqual(self.dut.state, ATState.FWD)
+        self.assertEqual(self.dut.state, ATState.CONNECTED)
 
         time.return_value += self.dut.esc_timeout + 0.01
         self.dut.dte_input('+')

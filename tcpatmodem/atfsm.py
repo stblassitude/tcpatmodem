@@ -4,7 +4,7 @@ import selectors
 from enum import Enum
 from time import time
 
-ATState = Enum('ATState', 'IDLE A T CMD FWD PLUS PLUSWAIT')
+ATState = Enum('ATState', 'IDLE A T CMD CONNECTING CONNECTED PLUS PLUSWAIT')
 ATResultCode = {
     'OK': 0,
     'CONNECT': 1,
@@ -44,7 +44,7 @@ class ATFSM:
         self.lf_char = '\n'
         self.bs_char = '\b'
         self.cmd = ''
-        self.connected = False
+        self.is_connected = False
         self.echo = True
         self.output = True
         self.verbose = True
@@ -120,7 +120,11 @@ class ATFSM:
             else:
                 self.cmd += c
                 self.dte_echo(c)
-        elif self.state == ATState.FWD:
+        elif self.state == ATState.CONNECTING:
+            if self.dialler:
+                self.dialler.hangup()
+            self.disconnected()
+        elif self.state == ATState.CONNECTED:
             if c == self.esc_char and time() - self.dte_recv_ts > self.esc_timeout:
                 self.state = ATState.PLUS
                 self.cmd = c
@@ -132,10 +136,10 @@ class ATFSM:
                 if len(self.cmd) == 3:
                     self.state = ATState.PLUSWAIT
             else:
-                self.state = ATState.FWD
+                self.state = ATState.CONNECTED
                 self.dce_output(self.cmd + c)
         elif self.state == ATState.PLUSWAIT:
-            self.state = ATState.FWD
+            self.state = ATState.CONNECTED
             self.dce_output(self.cmd + c)
         else:
             raise Exception('Invalid internal state')
@@ -177,6 +181,8 @@ class ATFSM:
             c = cmd[0].lower()
             if c in self.commands:
                 (ok, msg, cmd) = self.commands[c](cmd[1:])
+                if ok is None:
+                    return ok
                 if not ok:
                     break
             else:
@@ -185,6 +191,19 @@ class ATFSM:
                 break
         self.dte_response(msg)
         return ok
+
+    def connected(self, msg=''):
+        if len(msg) > 0:
+            self.dte_response('CONNECT ' + msg)
+        else:
+            self.dte_response('CONNECT')
+        self.is_connected = True
+        self.state = ATState.CONNECTED
+
+    def disconnected(self):
+        self.dte_response('NO CARRIER')
+        self.is_connected = False
+        self.state = ATState.A
 
     def parse_number(self, cmd):
         m = starts_with_number_re.match(cmd)
@@ -216,7 +235,11 @@ class ATFSM:
         return (True, 'OK', cmd)
 
     def command_h(self, cmd):
-        return (False, 'ERROR not implemented', '')
+        (n, cmd) = self.parse_number(cmd)
+        if self.dialler:
+            self.dialler.hangup()
+        # return (True, 'NO CARRIER', cmd)
+        return (None, '', '')
 
     def command_i(self, cmd):
         (n, cmd) = self.parse_number(cmd)
@@ -239,7 +262,8 @@ class ATFSM:
         return self.command_nop_numeric(cmd)
 
     def command_o(self, cmd):
-        if self.connected:
+        if self.is_connected:
+            self.state = ATState.CONNECTED
             return (True, 'CONNECTED', '')
         else:
             return (True, 'NO CARRIER', '')
