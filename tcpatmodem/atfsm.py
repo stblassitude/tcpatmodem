@@ -66,6 +66,7 @@ class ATFSM:
             'v': self.command_v,
             'x': self.command_x,
             'z': self.command_z,
+            ' ': self.command_space,
             '?': self.command_questionmark,
             '=': self.command_equals,
         }
@@ -298,6 +299,9 @@ class ATFSM:
 
     def command_z(self, cmd):
         return (False, 'ERROR not implemented', '')
+
+    def command_space(self, cmd):
+        return (True, 'OK', cmd)
 
     def command_questionmark(self, cmd):
         if self.register == 2:
