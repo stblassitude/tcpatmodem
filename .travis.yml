@@ -1,10 +1,15 @@
 dist: xenial
 language: python
 python:
-  - "3.7"
+- '3.7'
 install:
-  - pip install -r requirements.txt
+- pip install -r requirements.txt
 script:
-  - coverage run -m unittest discover && coverage report
+- coverage run -m unittest discover && coverage report
 after_success:
 - coveralls
+deploy:
+  provider: pypi
+  user: stblassitude
+  password:
+    secure: PsLhJM00RR8ad17ORNHc3/JQhjMmOtY0f0yB7zwUJTTteQuI/HO6XI2KFOZU02Iw04qPpoIXIAkW/ZOY7Qd3Jqn/0roS4GczPWstjQXxWi0BO2gYe+ScM08scRlBfy5xTui9IlAwQqFIauCSTE+m1HO11QzckQw90hMx7O7EC2J+JDnxMhsfi0YFHc3xViTXV18pmsuV8otpnmQsVDX2XZKa+909o7RPBCfnBgMBof8srebVGG+n56HcMoEOo84XcVTIDanxLjem1Jt+kFb70oejtb/aU3lYEUHVBI60/GPFEkkr1ARhBQO4lHsUZVXfDG7tKPaMQz1RaoUUqSZVP/cw3v8NVK5T+WnRgqhxEFMN7uSfRwgZMksSLkLFO/MOEFkk46JZ7bKgnRmUyIUwqwMZlfjwLvQkxE/J5oZ5rujgizaHw8XhkCC1BKMohHdQB3h0R2YCUDALVyg2lT9e/PtB19Xs5xjWKaOEimH0sH7LxYo3sfc7vpmOEfE4ZG76ZQVnZYKf1lbAfgtOs6cmsXmZ6H0fhNJsCZpPfVpuEbEHF2kR0O+9PDxlm9SK31gnjvlxhlABeV4gVS9ZtIfTFXRv9QrmEaG1nhurtCwBDGb455xJi3RXqEWkCtQEajOz1fAUcFx91L0g8yS7UI4t9yGp6IadbHdQC9O9ojBGrqE=
