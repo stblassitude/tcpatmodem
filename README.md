@@ -1,5 +1,7 @@
 # TCP AT Modem
 
+[![Build Status](https://travis-ci.com/stblassitude/tcpatmodem.svg?branch=master)](https://travis-ci.com/stblassitude/tcpatmodem)[![Coverage Status](https://coveralls.io/repos/github/stblassitude/tcpatmodem/badge.svg?branch=master)](https://coveralls.io/github/stblassitude/tcpatmodem?branch=master)
+
 This module implements an AT command interpreter as you would normally find in a modem. On the local data terminal (DTE) side, it can be connected to through standard in and out, while on the remote data communication (DCE) side, it can connect to a configurable TCP address and port.
 
 ## Installation
