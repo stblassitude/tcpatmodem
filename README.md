@@ -32,8 +32,9 @@ ATS99=99
 ```
 
 
-## Testing
+## Linting and Testing
 
 ```
+flake8
 coverage run -m unittest discover && coverage html
 ```

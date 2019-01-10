@@ -1,35 +1,42 @@
 import asyncio
 import asyncio.transports
 
-
 from typing import Optional
+
+
+class Dialler:
+    def __init__(self, loop, atfsm):
+        self.loop = loop
+        self.atfsm = atfsm
+        self.protocol = None
+
+    def hangup(self):
+        pass
+
+    def write(self):
+        pass
 
 
 class TcpDiallerProtocol(asyncio.Protocol):
     def __init__(self, dialler):
         self.dialler = dialler
-        self.fsm = self.dialler.fsm
+        self.atfsm = self.dialler.atfsm
         self.dialler.protocol = self
 
     def connection_made(self, transport: asyncio.transports.BaseTransport):
         self.transport = transport
-        self.fsm.connected('')
+        self.atfsm.dialler_connected('')
 
     def data_received(self, data: bytes):
         for c in data:
-            self.fsm.dte_output(chr(c))
+            self.atfsm.dialler_received(chr(c))
 
     def connection_lost(self, exc: Optional[Exception]):
-        self.fsm.disconnected()
+        self.atfsm.dialler_disconnected()
         self.dialler.protocol = None
 
 
-class TcpDialler:
-    def __init__(self, loop, fsm):
-        self.loop = loop
-        self.fsm = fsm
-        self.protocol = None
-
+class TcpDialler(Dialler):
     def dial(self, number):
         (host, port) = number.split(':')
         c = self.loop.create_connection(

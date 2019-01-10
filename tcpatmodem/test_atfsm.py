@@ -82,7 +82,8 @@ class ATFSMTest(TestCase):
         self.dut.state = ATState.CONNECTED
         time.return_value = 0.1
         self.dut.dte_input('a')
-        self.assertEqual(self.dut.dte_recv_ts, 0.1, 'patch of time.time() didn\'t work')
+        self.assertEqual(self.dut.dte_recv_ts, 0.1,
+                         'patch of time.time() didn\'t work')
         self.assertEqual(self.dut.state, ATState.CONNECTED)
         self.dut.dte_input('+')
         self.assertEqual(self.dut.state, ATState.CONNECTED)
@@ -94,7 +95,7 @@ class ATFSMTest(TestCase):
         self.assertEqual(self.dut.state, ATState.PLUS)
         self.dut.dte_input('+')
         self.assertEqual(self.dut.state, ATState.PLUSWAIT)
-        self.assertEqual(self.dut.cmd, '+++')
+        self.assertEqual(self.dut.plusbuffer, '+++')
         self.dut.check_escape()
         self.assertEqual(self.dut.state, ATState.PLUSWAIT)
         time.return_value += self.dut.esc_timeout + 0.01
@@ -104,7 +105,7 @@ class ATFSMTest(TestCase):
     def test_dte_command_invalid(self):
         r = self.dut.dte_command('-')
         self.assertFalse(r)
-        self.assertEqual(self.dte.getvalue(), 'ERROR unknown command\r\n')
+        self.assertEqual(self.dte.getvalue(), 'ERROR\r\n')
 
     def test_dte_command_empty(self):
         r = self.dut.dte_command('')

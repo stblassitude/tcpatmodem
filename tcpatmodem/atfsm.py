@@ -1,5 +1,4 @@
 import re
-import selectors
 
 from enum import Enum
 from time import time
@@ -30,10 +29,32 @@ ATResultCode = {
     'CONNECT 38400': 28,
 }
 
-starts_with_number_re = re.compile('^(\d*)(.*)$')
+starts_with_number_re = re.compile('^(\\d*)(.*)$')
 
 
-class ATFSM:
+def parse_number(cmd):
+    m = starts_with_number_re.match(cmd)
+    if m:
+        n = m.group(1)
+        n = int(n) if len(n) else 0
+        return n, m.group(2)
+    return 0, cmd
+
+
+class DiallerCaller:
+    """Callbacks into the AT FSM from the dialler"""
+
+    def dialler_connected(self, msg=''):
+        pass
+
+    def dialler_disconnected(self, msg=''):
+        pass
+
+    def dialler_received(self, c):
+        pass
+
+
+class ATFSM(DiallerCaller):
     def __init__(self, dte_file):
         self.dialler = None
         self.state = ATState.A
@@ -44,6 +65,8 @@ class ATFSM:
         self.lf_char = '\n'
         self.bs_char = '\b'
         self.cmd = ''
+        self.plusbuffer = ''
+        self.recvbuffer = ''
         self.is_connected = False
         self.echo = True
         self.output = True
@@ -53,26 +76,26 @@ class ATFSM:
         self.register = 0
         self.dte_file = dte_file
         self.commands = {
-            'a': self.command_a,
+            'a': self.command_error,
             'd': self.command_d,
             'e': self.command_e,
             'h': self.command_h,
             'i': self.command_i,
-            'l': self.command_l,
-            'm': self.command_m,
+            'l': self.command_number,
+            'm': self.command_number,
             'o': self.command_o,
             'q': self.command_q,
             's': self.command_s,
             'v': self.command_v,
             'x': self.command_x,
-            'z': self.command_z,
+            'z': self.command_error,
             ' ': self.command_space,
             '?': self.command_questionmark,
             '=': self.command_equals,
         }
 
     def check_escape(self):
-        if self.state == ATState.PLUSWAIT and len(self.cmd) == 3 \
+        if self.state == ATState.PLUSWAIT and len(self.plusbuffer) == 3 \
                 and time() - self.dte_recv_ts > self.esc_timeout:
             self.dte_echo('\r\nOK\r\n')
             self.state = ATState.A
@@ -81,7 +104,7 @@ class ATFSM:
         if self.dialler:
             self.dialler.write(c)
 
-    def dte_input(self, c):
+    def dte_input(self, c):  # noqa: C901
         if self.state == ATState.IDLE:
             if c == '\r':
                 self.state = ATState.A
@@ -126,35 +149,26 @@ class ATFSM:
                 self.dialler.hangup()
             self.disconnected()
         elif self.state == ATState.CONNECTED:
-            if c == self.esc_char and time() - self.dte_recv_ts > self.esc_timeout:
+            if c == self.esc_char \
+                    and time() - self.dte_recv_ts > self.esc_timeout:
                 self.state = ATState.PLUS
-                self.cmd = c
+                self.plusbuffer = c
             else:
                 self.dce_output(c)
         elif self.state == ATState.PLUS:
             if c == self.esc_char:
-                self.cmd += c
-                if len(self.cmd) == 3:
+                self.plusbuffer += c
+                if len(self.plusbuffer) == 3:
                     self.state = ATState.PLUSWAIT
             else:
                 self.state = ATState.CONNECTED
-                self.dce_output(self.cmd + c)
+                self.dce_output(self.plusbuffer + c)
         elif self.state == ATState.PLUSWAIT:
             self.state = ATState.CONNECTED
-            self.dce_output(self.cmd + c)
+            self.dce_output(self.plusbuffer + c)
         else:
             raise Exception('Invalid internal state')
         self.dte_recv_ts = time()
-
-    def dte_sel(self, key, mask):
-        if mask & selectors.EVENT_READ:
-            b = key.fileobj.read()
-            for c in b:
-                if c == '\n': # find a better way to get raw chars from a file
-                    c = '\r'
-                self.dte_input(c)
-        if mask & selectors.EVENT_WRITE:
-            pass # copy received data
 
     def dte_output(self, c):
         self.dte_file.write(c)
@@ -187,13 +201,13 @@ class ATFSM:
                 if not ok:
                     break
             else:
-                msg = 'ERROR unknown command'
                 ok = False
+                msg = 'ERROR'
                 break
         self.dte_response(msg)
         return ok
 
-    def connected(self, msg=''):
+    def dialler_connected(self, msg=''):
         if len(msg) > 0:
             self.dte_response('CONNECT ' + msg)
         else:
@@ -201,49 +215,40 @@ class ATFSM:
         self.is_connected = True
         self.state = ATState.CONNECTED
 
-    def disconnected(self):
+    def dialler_disconnected(self):
         self.dte_response('NO CARRIER')
         self.is_connected = False
         self.state = ATState.A
 
-    def parse_number(self, cmd):
-        m = starts_with_number_re.match(cmd)
-        if m:
-            n = m.group(1)
-            n = int(n) if len(n) else 0
-            return n, m.group(2)
-        return None
+    def dialler_received(self, c):
+        if self.is_connected:
+            if self.state == ATState.CONNECTED:
+                self.dte_output(c)
+            else:
+                self.recvbuffer += c
 
-    def command_nop_numeric(self, cmd):
-        (n, cmd) = self.parse_number(cmd)
-        if n is None:
-            return (False, 'ERROR', '')
-        return (True, 'OK', cmd)
-
-    def command_a(self, cmd):
-        return (False, 'ERROR not implemented', '')
+    def command_error(self, cmd):
+        return (False, 'ERROR', '')
 
     def command_d(self, cmd):
         if self.dialler:
             return self.dialler.dial(cmd)
-        return (False, 'ERROR not implemented', '')
+        return (False, 'ERROR not dialler configured', '')
 
     def command_e(self, cmd):
-        (n, cmd) = self.parse_number(cmd)
-        if n is None:
-            return (False, 'ERROR', '')
+        (n, cmd) = parse_number(cmd)
         self.echo = n == 1
-        return (True, 'OK', cmd)
+        return True, 'OK', cmd
 
     def command_h(self, cmd):
-        (n, cmd) = self.parse_number(cmd)
+        (n, cmd) = parse_number(cmd)
         if self.dialler:
             self.dialler.hangup()
         # return (True, 'NO CARRIER', cmd)
         return (None, '', '')
 
     def command_i(self, cmd):
-        (n, cmd) = self.parse_number(cmd)
+        (n, cmd) = parse_number(cmd)
         if n is None:
             return (False, 'ERROR', '')
         if n == 0:
@@ -256,49 +261,42 @@ class ATFSM:
             return (False, 'ERROR', '')
         return (True, i, cmd)
 
-    def command_l(self, cmd):
-        return self.command_nop_numeric(cmd)
-
-    def command_m(self, cmd):
-        return self.command_nop_numeric(cmd)
-
     def command_o(self, cmd):
         if self.is_connected:
             self.state = ATState.CONNECTED
-            return (True, 'CONNECTED', '')
+            self.dte_output(self.recvbuffer)
+            self.recvbuffer == ''
+            return (None, '', '')
         else:
             return (True, 'NO CARRIER', '')
 
     def command_q(self, cmd):
-        (n, cmd) = self.parse_number(cmd)
+        (n, cmd) = parse_number(cmd)
         if n is None:
             return (False, 'ERROR', '')
         self.output = n == 1
         return (True, 'OK', cmd)
 
     def command_s(self, cmd):
-        (n, cmd) = self.parse_number(cmd)
+        (n, cmd) = parse_number(cmd)
         if n is None:
             return (False, 'ERROR', '')
         self.register = n
         return (True, 'OK', cmd)
 
     def command_v(self, cmd):
-        (n, cmd) = self.parse_number(cmd)
+        (n, cmd) = parse_number(cmd)
         if n is None:
             return (False, 'ERROR', '')
         self.verbose = n == 1
         return (True, 'OK', cmd)
 
     def command_x(self, cmd):
-        (n, cmd) = self.parse_number(cmd)
+        (n, cmd) = parse_number(cmd)
         if n is None:
             return (False, 'ERROR', '')
         self.x = n
         return (True, 'OK', cmd)
-
-    def command_z(self, cmd):
-        return (False, 'ERROR not implemented', '')
 
     def command_space(self, cmd):
         return (True, 'OK', cmd)
@@ -319,7 +317,7 @@ class ATFSM:
         return (True, f'{v}\r\nOK', cmd)
 
     def command_equals(self, cmd):
-        (n, cmd) = self.parse_number(cmd)
+        (n, cmd) = parse_number(cmd)
         if n is None:
             return (False, 'ERROR', '')
         if self.register == 2:
@@ -334,6 +332,4 @@ class ATFSM:
             self.esc_timeout = n * .01
         elif self.register == 99:
             self.quit = n == 99
-        else:
-            v = 0
         return (True, 'OK', cmd)
